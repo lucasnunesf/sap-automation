@@ -1,8 +1,9 @@
 # SAP Purchasing Automation
 
-Automates a purchasing workflow that is normally handled manually by two separate teams: requisition creation, data handover between teams, and purchase order creation in SAP.
+Automates a purchasing workflow normally handled manually by two teams, from the supplier
+spreadsheet all the way to the purchase order created in SAP.
 
-![Python](https://img.shields.io/badge/Python-blue)
+![Python](https://img.shields.io/badge)
 ![VBA](https://img.shields.io/badge/VBA-Excel-green)
 ![SAP](https://img.shields.io/badge/SAP-GUI%20Scripting-lightgrey)
 
@@ -15,18 +16,19 @@ Automates a purchasing workflow that is normally handled manually by two separat
 
 ## The problem
 
-Purchase information arrives as a spreadsheet: vendor, part number, gross price, project code, item
-description and taxes. From there, the process is entirely manual and passes through two teams.
+Purchase information arrives from the supplier as a spreadsheet: vendor, part number, gross price,
+project code, item description and taxes. From there the process is entirely manual and crosses two
+teams.
 
 The administrative purchasing team copies the relevant lines into their own control spreadsheet and
 types each item into SAP to create the purchase requisition. SAP returns a requisition number, which
 is written back into yet another spreadsheet.
 
-The buyer then picks up that second spreadsheet and creates the purchase order in SAP, line by line.
+The buyer then picks up that spreadsheet and creates the purchase order in SAP, line by line.
 
-The same data is therefore re-typed three times, lives in three disconnected spreadsheets, and
-carries no traceability between the original request and the final order. Typing errors surface only
-after the document exists in SAP, when correcting it is expensive.
+The same data is re-typed three times, lives in disconnected files, and carries no traceability
+between the original supplier quote and the final order. Typing errors surface only after the
+document exists in SAP, when correcting it is expensive.
 
 ## What this project does
 
@@ -38,59 +40,72 @@ after the document exists in SAP, when correcting it is expensive.
 | Field validation | None, errors found in SAP | Before anything reaches SAP |
 | Traceability | Lost between spreadsheets | Full log per line |
 
-## How it works
+## Architecture
+
+The pipeline alternates between two languages by design: **Python handles data transformation, VBA
+drives the SAP GUI.** Each tool does what it is best at, and the VBA stages run natively on
+locked-down corporate desktops where installing Python is often not an option.
 
 ```mermaid
-flowchart LR
-    A[Purchase request<br/>spreadsheet] --> B[01 - Requisition<br/>Admin team]
-    B --> C[Requisition numbers<br/>returned by SAP]
-    C --> D[02 - Transform<br/>Python]
-    D --> E[Purchase order<br/>input file]
-    E --> F[03 - Purchase order<br/>Buyer]
-    F --> G[Execution log]
+flowchart TD
+    A[Supplier spreadsheet] --> B[01 - Intake<br/>Python]
+    B --> C[Requisition input file]
+    C --> D[02 - Requisition<br/>VBA to SAP]
+    D --> E[File with RC numbers]
+    E --> F[03 - Handover<br/>Python]
+    F --> G[Purchase order input file]
+    G --> H[04 - Purchase order<br/>VBA to SAP]
+    H --> I[Execution log]
 ```
 
-**Stage 1 - Requisition.** Reads the request spreadsheet, validates the required fields and creates
-the requisition in SAP through GUI scripting. The requisition number returned by SAP is written back
-next to each line, so the source file becomes the single record of what was created.
+**01 - Intake (Python).** Reads the spreadsheet sent by the supplier, which arrives in whatever
+layout the supplier uses. Normalizes the columns, validates the required fields and the data types,
+and writes the standardized file the requisition stage expects.
 
-**Stage 2 - Transform.** Python reads the completed requisition file, normalizes the fields, applies
-the tax and pricing rules and produces the input file the buyer needs, in the exact layout the next
-stage expects. This is the handover that used to be done by copy and paste.
+**02 - Requisition (VBA).** Reads the standardized file and creates each purchase requisition in SAP
+through GUI scripting. The requisition number returned by SAP is written back next to its line, so
+the file becomes the record of what was created.
 
-**Stage 3 - Purchase order.** Reads the prepared file and creates the purchase order in SAP, logging
-every line as created, skipped or failed, with the reason.
+**03 - Handover (Python).** Reads the completed requisition file, applies the pricing and tax rules
+and produces the purchase order input file in the exact layout the buyer's stage expects. This is
+the handover that used to be done by copy and paste between teams.
+
+**04 - Purchase order (VBA).** Reads the prepared file and creates the purchase order in SAP,
+logging every line as created, skipped or failed, with the reason.
 
 ## Input data model
 
-The pipeline works on a flat spreadsheet. Sample files with synthetic data are included.
+The pipeline works on flat spreadsheets. Sample files with synthetic data are included in each stage.
 
 | Field | Type | Notes |
 |---|---|---|
 | `vendor_name` | text | required |
-| `part_number` | text | required, validated against the item list |
+| `part_number` | text | required |
 | `item_description` | text | required |
 | `gross_price` | decimal | required, must be positive |
 | `tax_code` | text | required |
 | `project_code` | text | required, cost assignment |
 | `quantity` | integer | required |
-| `requisition_number` | text | written back by stage 1 |
+| `requisition_number` | text | written back by stage 02 |
+| `purchase_order_number` | text | written back by stage 04 |
 
 ## Repository structure
 
 ```
 sap-automation/
-├── 01-requisition/        # spreadsheet -> SAP, writes requisition numbers back
+├── 01-supplier-intake/      # Python: supplier file -> standardized file
 │   ├── src/
 │   └── sample_data/
-├── 02-transform/          # Python: requisition file -> purchase order file
+├── 02-requisition-sap/      # VBA: standardized file -> SAP, returns RC numbers
 │   ├── src/
 │   └── sample_data/
-├── 03-purchase-order/     # prepared file -> SAP purchase order
+├── 03-requisition-to-po/    # Python: RC file -> purchase order file
 │   ├── src/
 │   └── sample_data/
-├── shared/                # SAP session handling, Excel reader, validation, logging
-├── docs/
+├── 04-purchase-order-sap/   # VBA: PO file -> SAP purchase order
+│   ├── src/
+│   └── sample_data/
+├── shared/                  # validation rules, field mapping, logging
 ├── requirements.txt
 └── .gitignore
 ```
@@ -99,9 +114,9 @@ sap-automation/
 
 ### Requirements
 
-- Python 3.11 or newer
-- Microsoft Excel
-- SAP GUI for Windows with scripting enabled (only for stages 1 and 3)
+- Python 3.11 or newer (stages 01 and 03)
+- Microsoft Excel with macros enabled (stages 02 and 04)
+- SAP GUI for Windows with scripting enabled (stages 02 and 04)
 
 ### Setup
 
@@ -111,26 +126,30 @@ cd sap-automation
 pip install -r requirements.txt
 ```
 
-### Running the transformation stage
+### Running the Python stages
 
-Stage 2 runs standalone and needs no SAP connection, so it can be executed against the sample data:
+Stages 01 and 03 need no SAP connection, so they run standalone against the sample data:
 
 ```bash
-python 02-transform/src/transform.py --input 02-transform/sample_data/requisitions.xlsx
+python 01-supplier-intake/src/intake.py --input 01-supplier-intake/sample_data/supplier_file.xlsx
+python 03-requisition-to-po/src/handover.py --input 03-requisition-to-po/sample_data/requisitions.xlsx
 ```
 
-Stages 1 and 3 require an active SAP session and are meant to run against a test environment.
+### Running the VBA stages
+
+The `.bas` modules are imported into an Excel workbook through the VBA editor. They require an
+active SAP session and are meant to run against a test environment.
 
 ## Tech stack
 
-Python (pandas, openpyxl, pywin32), VBA, SAP GUI Scripting, Excel.
+Python (pandas, openpyxl), VBA, SAP GUI Scripting, Excel.
 
 ## Roadmap
 
-- [ ] Replace the spreadsheet handover with a database table
+- [ ] Replace the file handover between stages with a database table
 - [ ] Unit tests for the validation layer
 - [ ] Run summary report with created, skipped and failed lines
-- [ ] Configurable field mapping, so the layout is not hardcoded
+- [ ] Configurable field mapping, so supplier layouts are not hardcoded
 
 ## Author
 
