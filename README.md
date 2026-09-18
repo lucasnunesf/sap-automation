@@ -3,7 +3,7 @@
 Automates a purchasing workflow normally handled manually by two teams, from the supplier
 spreadsheet all the way to the purchase order created in SAP.
 
-![Python](https://img.shields.io/badge)
+![Python](https://img.shields.io/badge/Python-3.11-blue)
 ![VBA](https://img.shields.io/badge/VBA-Excel-green)
 ![SAP](https://img.shields.io/badge/SAP-GUI%20Scripting-lightgrey)
 
