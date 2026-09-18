@@ -2,7 +2,7 @@
 
 Automates a purchasing workflow that is normally handled manually by two separate teams: requisition creation, data handover between teams, and purchase order creation in SAP.
 
-![Python](https://img.shields.io/badge/Python-3.11-blue)
+![Python](https://img.shields.io/badge/Python-blue)
 ![VBA](https://img.shields.io/badge/VBA-Excel-green)
 ![SAP](https://img.shields.io/badge/SAP-GUI%20Scripting-lightgrey)
 
