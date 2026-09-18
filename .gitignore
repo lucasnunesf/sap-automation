@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+venv/
+.venv/
+
+# Credentials
+.env
+*credentials*
+
+# Generated output
+requisition_input.xlsx
+intake_report.txt
+
+# Excel temp files
+~$*
