@@ -8,8 +8,10 @@ venv/
 *credentials*
 
 # Generated output
-requisition_input.xlsx
+normalised_items.xlsx
+Input_RC_automatic_filled.xlsx
 intake_report.txt
+builder_report.txt
 
 # Excel temp files
 ~$*
