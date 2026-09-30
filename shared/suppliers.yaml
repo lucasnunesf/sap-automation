@@ -1,0 +1,143 @@
+# ---------------------------------------------------------------------------
+# Supplier mapping
+#
+# One block per supplier. To add a supplier, copy a block, change the column
+# names to match their spreadsheet and save. No code change is required.
+#
+# header_row     : row number where the column titles sit (1-based)
+# sheets         : sheet names to read; several means the file is split
+# decimal_style  : "comma" for 1.234,56  |  "dot" for 1,234.56
+# tax_style      : how the tax rates are written in the file
+#                    percent_text     "5%"     -> 0.05
+#                    percent_number   5.0      -> 0.05
+#                    decimal_fraction 0.05     -> 0.05
+#                    amount           1267.50  -> rate = amount / net_amount
+#                    combined_text    "IPI 5%; ICMS 18%" in a single column
+# header_cells   : values that live outside the table, as cell references
+# columns        : the supplier's column title for each standard field
+# skip_rows_when : a row whose given column contains any of these words is
+#                  a section or subtotal line, not an item
+# ---------------------------------------------------------------------------
+
+suppliers:
+
+  supplier_1:
+    name: Supplier 1
+    file_pattern: supplier_1*.xlsx
+    sheets: [Commercial Proposal]
+    header_row: 9
+    decimal_style: comma
+    tax_style: percent_text
+    header_cells:
+      supplier_code: B5
+      supplier_name: B6
+      project_code: B7
+    columns:
+      part_number: Part No.
+      description: Item Description
+      operation_type: Type (Mat/Serv)
+      quantity: Qty
+      unit_price: Unit Price excl. Taxes
+      net_amount: Total excl. Taxes
+      ipi: IPI
+      icms: ICMS
+      pis_cofins: PIS/COFINS
+      iss: ISS
+    skip_rows_when:
+      column: Unit Price excl. Taxes
+      contains: [GRAND TOTAL]
+
+  supplier_2:
+    name: Supplier 2
+    file_pattern: supplier_2*.xlsx
+    sheets: [Quotation]
+    header_row: 1
+    decimal_style: dot
+    tax_style: percent_number
+    columns:
+      supplier_code: Supplier ID
+      supplier_name: Supplier
+      project_code: Project
+      part_number: Item Code
+      description: Item Description
+      operation_type: Category
+      quantity: Quantity
+      unit_price: Unit Price
+      net_amount: Net Amount
+      ipi: IPI Rate (%)
+      icms: ICMS Rate (%)
+      pis_cofins: PIS/COFINS Rate (%)
+      iss: ISS Rate (%)
+    skip_rows_when:
+      column: Unit Price
+      contains: [TOTAL]
+
+  supplier_3:
+    name: Supplier 3
+    file_pattern: supplier_3*.xlsx
+    sheets: [QUOTE]
+    header_row: 7
+    decimal_style: dot
+    tax_style: decimal_fraction
+    header_cells:
+      supplier_code: B4
+      supplier_name: F4
+      project_code: B5
+    columns:
+      part_number: PART NUMBER
+      description: SERVICE / MATERIAL DESCRIPTION
+      operation_type: MAT/SERV
+      quantity: QTY
+      unit_price: UNIT PRICE
+      net_amount: TOTAL WITHOUT TAX
+      ipi: IPI
+      icms: ICMS
+      pis_cofins: PIS COFINS
+      iss: ISS
+    skip_rows_when:
+      column: SERVICE / MATERIAL DESCRIPTION
+      contains: [SUBTOTAL, QUOTE TOTAL, MATERIALS, SERVICES]
+
+  supplier_4:
+    name: Supplier 4
+    file_pattern: supplier_4*.xlsx
+    sheets: [ZMM_MATERIALS, ZMM_SERVICES]
+    header_row: 1
+    decimal_style: dot
+    tax_style: amount
+    columns:
+      supplier_code: SUPPLIER_CODE
+      supplier_name: SUPPLIER_NAME
+      project_code: PROJECT_ID
+      part_number: MATERIAL_NO
+      description: MATERIAL_TEXT
+      quantity: ORDER_QTY
+      unit_price: NET_PRICE
+      net_amount: NET_VALUE
+      ipi: IPI_AMOUNT
+      icms: ICMS_AMOUNT
+      pis_cofins: PISCOFINS_AMOUNT
+      iss: ISS_AMOUNT
+
+  supplier_5:
+    name: Supplier 5
+    file_pattern: supplier_5*.xlsx
+    sheets: [Offer]
+    header_row: 6
+    decimal_style: comma
+    tax_style: combined_text
+    header_cells:
+      supplier_name: C3
+    columns:
+      part_number: Article
+      description: Description
+      quantity: Quantity
+      unit_price: Unit Price
+      taxes: Applicable Taxes
+    composite:
+      quantity_has_unit: true          # "36 pcs" -> 36
+      price_has_currency: true         # "BRL 1.145,00" -> 1145.00
+      type_prefix_in_description: true # "[MAT] ..." -> MATERIAL
+    skip_rows_when:
+      column: Applicable Taxes
+      contains: [OFFER TOTAL]
