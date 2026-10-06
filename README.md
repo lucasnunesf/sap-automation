@@ -7,10 +7,29 @@ quotation all the way to the purchase order created in SAP.
 ![VBA](https://img.shields.io/badge/VBA-Excel-green)
 ![SAP](https://img.shields.io/badge/SAP-GUI%20Scripting-lightgrey)
 
-> **About this project**
-> Independent project, built from scratch with synthetic data. It recreates a manual purchasing
-> process commonly found in manufacturing companies, based on workflows I have worked alongside.
-> It contains no employer code, data or system configuration.
+> **This is a rebuild, not the original.** The automation it is based on ran in production at an
+> automotive manufacturer and is still in use. That code carries system configuration and company
+> data that cannot be published, so this repository is a clean-room rebuild with synthetic data —
+> same architecture, same business rules, none of the employer's code or information.
+>
+> The case study, with the measured results, is here:
+> **[Automating the purchasing cycle in SAP](https://lucasnunesf.notion.site/Automating-the-purchasing-cycle-in-SAP-a73917c89c1783d49fb301b2a65ab928)**
+
+---
+
+## What the original achieved
+
+![Results](docs/results.png)
+
+Measured on four suppliers of different document volume, in a live process. The pattern matters
+more than any single figure: **the larger the volume, the larger the gain.** Manual time grows with
+the number of lines; automated time barely moves.
+
+| | Manual | Automated |
+|---|---|---|
+| 400-line purchase order | 5 h 10 min | 8 min 38 s |
+| Time reduction | — | up to 97% |
+| Data entry | Re-typed 3 times | Entered once |
 
 ---
 
@@ -29,16 +48,14 @@ The same data is re-typed three times, lives in disconnected files, and carries 
 between the original quotation and the final order. Typing errors surface only after the document
 exists in SAP, when correcting it is expensive.
 
-## What this project does
+## What this repository adds
 
-| | Manual process | Automated |
-|---|---|---|
-| Data entry | Re-typed 3 times | Entered once |
-| Handover between teams | Copy and paste between files | Generated automatically |
-| Requisition number tracking | Manual, in a separate file | Written back by the macro |
-| Field validation | None, errors found in SAP | Before anything reaches SAP |
-| Business rules | Held by whoever does the job | Enforced and reported |
-| Traceability | Lost between spreadsheets | Every line carries its source file and row |
+The production version solved the two SAP steps. It did not solve the **input**: every supplier
+still sent their own layout, and the conversion work fell on whoever filled in the internal
+spreadsheet.
+
+This rebuild closes that gap. It reads **five different supplier formats**, each with a real
+parsing problem, and maps them onto one internal standard through configuration rather than code.
 
 ## Architecture
 
