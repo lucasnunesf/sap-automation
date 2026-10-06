@@ -14,6 +14,7 @@
 #                    amount           1267.50  -> rate = amount / net_amount
 #                    combined_text    "IPI 5%; ICMS 18%" in a single column
 # header_cells   : values that live outside the table, as cell references
+# constants      : values the file never carries at all, written here once
 # columns        : the supplier's column title for each standard field
 # skip_rows_when : a row whose given column contains any of these words is
 #                  a section or subtotal line, not an item
@@ -128,6 +129,9 @@ suppliers:
     tax_style: combined_text
     header_cells:
       supplier_name: C3
+    constants:
+      supplier_code: SUP-V2291
+      project_code: R118
     columns:
       part_number: Article
       description: Description
