@@ -70,7 +70,9 @@ def read_supplier(path, config):
     columns = config["columns"]
     rows = []
 
-    file_values = {}
+    # Values that live outside the table: a cell reference when the file
+    # carries them, a constant when it does not.
+    file_values = dict(config.get("constants") or {})
     for field, ref in (config.get("header_cells") or {}).items():
         file_values[field] = P.clean_text(workbook[config["sheets"][0]][ref].value)
 
