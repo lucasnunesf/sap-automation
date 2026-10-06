@@ -20,10 +20,10 @@ from pathlib import Path
 import openpyxl
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared"))
-import parsers as P  # noqa: E402
+import parsers as P      # noqa: E402
+import item_master        # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
-MASTER_PATH = ROOT / "shared" / "master_data.xlsx"
 TEMPLATE_PATH = ROOT / "shared" / "Input_RC_automatic.xlsx"
 
 FIRST_DATA_ROW = 8
@@ -33,29 +33,6 @@ SHEET_BY_TYPE = {"MATERIAL": "Tooling", "SERVICE": "Service"}
 COL = {"code": 3, "quantity": 4, "value": 5, "description": 6,
        "item_type": 7, "material_group": 8, "budget_code": 9,
        "budget_line": 10, "project_code": 11}
-
-
-def load_master(path=MASTER_PATH):
-    """Item master keyed by the part number the supplier uses."""
-    sheet = openpyxl.load_workbook(path, data_only=True)["Item Master"]
-    headers = [c.value for c in sheet[4]]
-    index = {name: i for i, name in enumerate(headers) if name}
-
-    master = {}
-    for row in sheet.iter_rows(min_row=5, values_only=True):
-        part = P.clean_text(row[index["Supplier Part Number"]])
-        if not part:
-            continue
-        master[part.upper()] = {
-            "internal_code": row[index["Internal Code"]],
-            "item_category": row[index["Item Category"]],
-            "material_group": row[index["Material Group"]],
-            "budget_code": row[index["Budget Code"]],
-            "budget_line": row[index["Budget Line"]],
-            "project_code": row[index["Project Code"]],
-            "operation_type": row[index["Operation Type"]],
-        }
-    return master
 
 
 def load_normalised(path):
@@ -99,9 +76,23 @@ def enrich(rows, master):
     return accepted, rejected
 
 
+LAST_DATA_ROW = 260
+
+
+def clear_data_rows(sheet):
+    """The template ships with example rows. Writing over part of them would
+    leave the rest behind and send them to SAP as if they belonged to this run."""
+    for row in range(FIRST_DATA_ROW, LAST_DATA_ROW + 1):
+        for column in COL.values():
+            sheet.cell(row=row, column=column).value = None
+
+
 def write_requisition(rows, out_path, template=TEMPLATE_PATH):
     workbook = openpyxl.load_workbook(template)
     counters = {"Tooling": 0, "Service": 0}
+
+    for sheet_name in SHEET_BY_TYPE.values():
+        clear_data_rows(workbook[sheet_name])
 
     for row in rows:
         sheet_name = SHEET_BY_TYPE[row["operation_type"]]
@@ -157,7 +148,7 @@ def main():
     rows = load_normalised(Path(args.input))
     print(f"  {len(rows)} normalised lines read")
 
-    accepted, rejected = enrich(rows, load_master())
+    accepted, rejected = enrich(rows, item_master.load())
     counters = write_requisition(accepted, args.output)
     print()
     print(write_report(accepted, rejected, counters, args.report))
