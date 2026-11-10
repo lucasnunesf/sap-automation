@@ -1,136 +1,91 @@
 # SAP Purchasing Automation
 
-Automates a purchasing workflow normally handled manually by two teams, from the supplier
-quotation all the way to the purchase order created in SAP.
+Turns supplier quote spreadsheets into purchase orders in SAP, with no retyping. The original version ran in production at an automotive manufacturer and cut a 5-hour task to under 9 minutes.
+
+![Banner](docs/banner.png)
 
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
 ![VBA](https://img.shields.io/badge/VBA-Excel-green)
 ![SAP](https://img.shields.io/badge/SAP-GUI%20Scripting-lightgrey)
+[![tests](https://github.com/lucasnunesf/sap-automation/actions/workflows/tests.yml/badge.svg)](https://github.com/lucasnunesf/sap-automation/actions/workflows/tests.yml)
 
-> **This is a rebuild, not the original.** The automation it is based on ran in production at an
-> automotive manufacturer and is still in use. That code carries system configuration and company
-> data that cannot be published, so this repository is a clean-room rebuild with synthetic data —
-> same architecture, same business rules, none of the employer's code or information.
->
-> The case study, with the measured results, is here:
-> **[Automating the purchasing cycle in SAP](https://lucasnunesf.notion.site/Automating-the-purchasing-cycle-in-SAP-a73917c89c1783d49fb301b2a65ab928)**
+## At a glance
 
----
+| | |
+|---|---|
+| **Result** | Up to 97% less time per order (5 h 10 min → 8 min 38 s on 400 lines), measured in production |
+| **My role** | I built the SAP automation (requisition and purchase order). The wider payments project had three people |
+| **This repo** | A rebuild from scratch with synthetic data, plus a new step the original never had: reading 5 different supplier formats |
+| **Skills** | Data cleaning and validation, ETL with Python, config-driven design, automated testing (pytest, GitHub Actions), SAP GUI Scripting with VBA |
+| **Case study** | [Automating the purchasing cycle in SAP](https://lucasnunesf.notion.site/Automating-the-purchasing-cycle-in-SAP-a73917c89c1783d49fb301b2a65ab928) (context and real numbers) |
 
-## What the original achieved
+> **Why a rebuild?** The production code contains company data and system settings, so it can't be published. Everything here is fictional (codes like `PL01`, `MAT-100441`, `PRJ-D90B`), but the design and business rules are the same.
+
+## Results
 
 ![Results](docs/results.png)
 
-Measured on four suppliers of different document volume, in a live process. The pattern matters
-more than any single figure: **the larger the volume, the larger the gain.** Manual time grows with
-the number of lines; automated time barely moves.
-
-| | Manual | Automated |
+| Order size | Manual | Automated |
 |---|---|---|
-| 400-line purchase order | 5 h 10 min | 8 min 38 s |
-| Time reduction | — | up to 97% |
-| Data entry | Re-typed 3 times | Entered once |
+| 1 service line | 4 min | 17 s |
+| 3 tooling lines | 10 min | 30 s |
+| 48 service lines | 38 min | 63 s |
+| 400 tooling lines | 5 h 10 min | 8 min 38 s |
 
----
+Manual time grows with every line. Automated time barely changes, so the bigger the order, the bigger the gain.
 
 ## The problem
 
-Purchase information arrives from the supplier as a spreadsheet: vendor, part number, gross price,
-project code, item description and taxes. Every supplier sends it in their own format, and none of
-them will change that format for a single customer.
+![Before and after](docs/before-after.png)
 
-From there the process is manual and crosses two teams. The administrative team copies the relevant
-lines into their own control spreadsheet and types each item into SAP to create the purchase
-requisition. SAP returns a requisition number, which is written into yet another spreadsheet. The
-buyer then picks up that spreadsheet and creates the purchase order in SAP, line by line.
+Suppliers send their prices as spreadsheets, each in their own layout. Before this tool, the same data was typed by hand three times across two teams: into a control sheet, into SAP as a purchase requisition (RC), and again into SAP as a purchase order (PO). Mistakes only showed up once the document already existed in SAP, where fixing it is slow.
 
-The same data is re-typed three times, lives in disconnected files, and carries no traceability
-between the original quotation and the final order. Typing errors surface only after the document
-exists in SAP, when correcting it is expensive.
+<details>
+<summary><b>Quick glossary</b> (Brazilian purchasing terms)</summary>
 
-## What this repository adds
+| Term | Meaning |
+|---|---|
+| RC | Purchase requisition, the internal request to buy. SAP transaction ME51N |
+| PO | Purchase order, the document sent to the supplier. SAP transaction ME21N |
+| IPI, ICMS | Brazilian taxes on industrial products and on goods and services |
+| Tooling / Service | The two operation types. Each gets its own PO |
+| GUI Scripting | SAP's built-in way to control its screens from code |
 
-The production version solved the two SAP steps. It did not solve the **input**: every supplier
-still sent their own layout, and the conversion work fell on whoever filled in the internal
-spreadsheet.
+</details>
 
-This rebuild closes that gap. It reads **five different supplier formats**, each with a real
-parsing problem, and maps them onto one internal standard through configuration rather than code.
+## How it works
 
-## Architecture
+![Pipeline](docs/pipeline.png)
 
-Five stages, alternating between two languages by design: **Python transforms data, VBA drives the
-SAP GUI.** The VBA stages run natively on locked-down corporate desktops where installing Python is
-often not an option.
+**Python handles the data, VBA operates SAP.** The SAP steps are in VBA because it runs on locked corporate computers where installing Python is often not allowed.
 
-```mermaid
-flowchart TD
-    A[Supplier quotation<br/>any of 5 layouts] --> B[01 - Supplier intake<br/>Python]
-    B --> C[Normalised table]
-    C --> D[02 - Requisition builder<br/>Python]
-    D --> E[Requisition workbook]
-    E --> F[03 - Requisition<br/>VBA to SAP ME51N]
-    F --> G[Requisition number]
-    G --> H[04 - Purchase order handover<br/>Python]
-    H --> I[Purchase order files<br/>one per operation type]
-    I --> J[05 - Purchase order<br/>VBA to SAP ME21N]
-    J --> K[Purchase order number]
-```
+| Step | What it does | Language | Output |
+|---|---|---|---|
+| 01 Read the quote | Turns any of the 5 supplier layouts into one standard table and rejects bad lines | Python | `normalised_items.xlsx` |
+| 02 Build the requisition | Adds internal code, budget and project from the item master and calculates the value SAP expects | Python | `Input_RC_automatic_filled.xlsx` |
+| 03 Create the RC | Fills in ME51N and writes the RC number back to the file | VBA | RC number |
+| 04 Hand over to the buyer | Joins the RC with the supplier data and creates one file per operation type | Python | `PO_<supplier>_<type>.xlsx` |
+| 05 Create the PO | Fills in ME21N by pulling in the RC lines instead of retyping them, the way a buyer does | VBA | PO number |
 
-Each stage owns one kind of knowledge, so a change stays inside one stage.
+Each step owns one kind of knowledge. If a supplier changes their spreadsheet, only step 01 is affected.
 
-**01 - Supplier intake.** Reads a supplier quotation according to its mapping entry and produces a
-normalised table. Knows supplier layouts and nothing else. A supplier changing their spreadsheet
-affects only this stage.
+The two halves belong to different people, so each one works on its own. The admin team runs steps 01 to 04. The buyer runs step 05 and only needs Excel, SAP and one PO file, which carries the supplier, dates, RC numbers, quantities and prices. Neither macro depends on Python or a shared drive.
 
-**02 - Requisition builder.** Enriches the normalised table from the item master, works out the
-value SAP expects, and fills the requisition workbook. Knows the internal side of the process: the
-item master, the tooling and service split, and the tax rule.
+## Reading messy supplier files
 
-**03 - Requisition.** Creates the requisition in SAP through GUI scripting and writes the number
-SAP returns back into the workbook.
+![Supplier formats](docs/supplier-formats.png)
 
-**04 - Purchase order handover.** Reads the completed requisition, joins it back to the supplier
-data from stage 01 and produces the purchase order files. This replaces the copy-and-paste handover
-between the two teams.
+The production version automated the SAP steps, but every supplier still sent their own layout and someone had to convert it by hand. This rebuild solves that with five sample files, each with a real problem:
 
-**05 - Purchase order.** Creates the purchase order in SAP by adopting the lines of the
-requisitions it references, rather than re-typing items SAP already holds, and writes the order
-number back.
-
-## Who runs what
-
-The two halves of the process belong to different people, so each half is self-contained.
-
-| Stage | Run by | Needs |
+| Supplier | How the same 5% IPI arrives | Other problems |
 |---|---|---|
-| 01, 02 | Administrative team | Python, the supplier quotation |
-| 03 | Administrative team | Excel, SAP, the requisition workbook |
-| 04 | Administrative team, once SAP has returned the number | Python |
-| 05 | Buyer | Excel, SAP, the purchase order file only |
+| 1 | `"5%"` as text | |
+| 2 | `5.0` as a number | |
+| 3 | `0.05` as a fraction | Headings and subtotal rows mixed into the data, plus planted bad lines |
+| 4 | The tax amount in currency | Materials and services split across two sheets |
+| 5 | Inside `"IPI 5%; ICMS 18%"` | Quantity, unit and currency packed into one cell |
 
-The buyer receives one file and needs nothing else from the pipeline: supplier, dates, requisition
-numbers, quantities and prices all travel inside it. Neither macro depends on Python, a shared
-drive, or a network path.
-
-## The business rules the code enforces
-
-Three rules are expressed in code rather than left to whoever happens to be doing the job.
-
-**The requisition value depends on the operation type.** A requisition does not carry tax rates, it
-carries the value those rates produce. Tooling takes the net amount plus IPI; service takes it with
-all taxes applied. One function, five lines, in stage 02.
-
-**A requisition belongs to one supplier.** Stage 04 checks that every line agrees and refuses to
-continue when they do not, naming the suppliers it found. Without that check, a requisition built
-from mixed quotations would quietly produce wrong purchase orders.
-
-**A purchase order covers one operation type.** A requisition therefore yields at most two orders,
-one for tooling and one for service.
-
-## Adding a supplier without changing code
-
-Supplier layouts live in `shared/suppliers.yaml`, one block per supplier:
+Each supplier is one block in `shared/suppliers.yaml`:
 
 ```yaml
 supplier_2:
@@ -145,20 +100,53 @@ supplier_2:
     ipi: IPI Rate (%)
 ```
 
-Adding a supplier means copying a block and changing the column titles. Where a quotation does not
-carry a value at all, a `constants` block supplies it. Items work the same way: a new part number
-is a new row in `shared/master_data.xlsx`. Neither requires touching Python.
+Adding a supplier means copying a block and changing the column names. A `constants` block fills in values the spreadsheet doesn't have. New items are a new row in `shared/master_data.xlsx`. Neither needs a Python change.
 
-The five sample files exercise the cases that make this necessary. The same 5% IPI arrives as
-`"5%"` text from supplier 1, `5.0` from supplier 2, `0.05` from supplier 3, a currency amount from
-supplier 4, and buried inside `"IPI 5%; ICMS 18%"` from supplier 5. Supplier 3 also carries section
-headings and subtotal rows inside its data, supplier 4 splits materials and services across two
-sheets, and supplier 5 packs quantity, unit and currency into single cells.
+## Design decisions
 
-## What the pipeline does not do
+**Mapping in config, not code.** Supplier layouts change all the time. Keeping them in YAML means the person who knows the supplier can update it without touching Python.
 
-It never guesses. A missing quantity, a zero price, a duplicated line or an item that is not
-registered is rejected and reported with its source file, sheet and row:
+**Reject, never guess.** A missing quantity, a zero price, a duplicate line or an unknown item is rejected and reported with its file, sheet and row. Layout differences repeat every month, so they are worth automating. Data errors are one-offs, so they are worth reporting, not fixing silently.
+
+**Business rules live in code.** They don't depend on whoever is doing the job that day:
+
+1. Tooling is valued at net price plus IPI. Service is valued with all taxes. (step 02)
+2. One RC belongs to one supplier. Step 04 stops and lists the suppliers if it finds more than one, because a mixed RC would silently create wrong POs.
+3. One PO covers one operation type, so an RC creates at most two POs.
+
+**Reuse what SAP already has.** Step 05 pulls in the RC lines instead of typing them again. Less typing means fewer errors, and it matches how buyers actually work.
+
+## Try it
+
+Steps 01, 02 and 04 run on the sample data without SAP.
+
+```bash
+git clone https://github.com/lucasnunesf/sap-automation.git
+cd sap-automation
+pip install -r requirements.txt
+
+cd 01-supplier-intake/src
+python intake.py --input ../sample_data/supplier_2.xlsx
+
+cd ../../02-requisition-builder/src
+python build_requisition.py --input ../../01-supplier-intake/src/normalised_items.xlsx
+```
+
+Output:
+
+```
+Stage 01 - supplier intake
+10 lines read
+10 normalised
+0 rejected
+
+Stage 02 - requisition builder
+10 normalised lines read
+10 written (7 tooling, 3 service)
+0 rejected
+```
+
+To see all five formats at once and the rejection report, run step 01 with `--input ../sample_data/ --all`:
 
 ```
 44 lines read
@@ -171,58 +159,7 @@ Rejected lines:
   supplier_3.xlsx [QUOTE] row 13: net amount is zero
 ```
 
-Layout differences repeat every month and are worth automating. Data errors are one-offs and are
-worth reporting, not repairing.
-
-## Repository structure
-
-```
-sap-automation/
-├── 01-supplier-intake/
-│   ├── src/intake.py              # supplier quotation -> normalised table
-│   └── sample_data/               # five formats, same required fields
-├── 02-requisition-builder/
-│   └── src/build_requisition.py   # normalised table -> requisition workbook
-├── 03-requisition-sap/
-│   └── src/RequisitionSAP.bas     # requisition workbook -> SAP ME51N
-├── 04-po-handover/
-│   └── src/po_handover.py         # requisition -> purchase order files
-├── 05-purchase-order-sap/
-│   └── src/PurchaseOrderSAP.bas   # purchase order file -> SAP ME21N
-├── shared/
-│   ├── suppliers.yaml             # supplier layout mapping
-│   ├── parsers.py                 # value parsing, one place for messy formats
-│   ├── item_master.py             # item master access, used by stages 02 and 04
-│   ├── master_data.xlsx           # item master
-│   ├── Input_RC_automatic.xlsx    # requisition template
-│   └── Input_PO_automatic.xlsx    # purchase order template
-└── requirements.txt
-```
-
-## Getting started
-
-```bash
-git clone https://github.com/lucasnunesf/sap-automation.git
-cd sap-automation
-pip install -r requirements.txt
-```
-
-Stages 01, 02 and 04 need no SAP connection and run against the sample data. The pipeline processes
-one supplier quotation at a time:
-
-```bash
-cd 01-supplier-intake/src
-python intake.py --input ../sample_data/supplier_2.xlsx
-
-cd ../../02-requisition-builder/src
-python build_requisition.py --input ../../01-supplier-intake/src/normalised_items.xlsx
-```
-
-`--input ../sample_data/ --all` reads every sample file in one pass. That is useful for seeing the
-five formats normalised together, and stage 04 will then stop and say so, because the result mixes
-suppliers.
-
-After stage 03 has written the requisition numbers:
+Step 04 needs the RC numbers that SAP returns in step 03. Without SAP, you can type any number into cell `K2` of the Tooling and Service sheets of `Input_RC_automatic_filled.xlsx`, then run:
 
 ```bash
 cd ../../04-po-handover/src
@@ -231,27 +168,85 @@ python po_handover.py \
     --normalised  ../../01-supplier-intake/src/normalised_items.xlsx
 ```
 
-### The VBA stages
+```
+10 requisition lines read
+2 purchase orders generated
+0 lines held back
 
-The `.bas` modules are imported into an Excel workbook through the VBA editor (`Alt + F11`, then
-File > Import File). They require an active SAP session with GUI scripting enabled on both client
-and server, and are meant to run against a test environment.
+Files written:
+  PO_SUP-10045_MATERIAL.xlsx (7 lines)
+  PO_SUP-10045_SERVICE.xlsx (3 lines)
+```
 
-The SAP screen paths at the top of each module are release and variant specific. Record them once
-in your own system with the SAP GUI script recorder and replace the constants; paths copied from
-another installation will not resolve.
+If you run it on the all-suppliers output, step 04 stops on purpose with an error, because the RC would mix five suppliers.
+
+## Tests
+
+69 automated tests run on every push with GitHub Actions:
+
+| File | What it checks |
+|---|---|
+| `test_parsers.py` | Every number and tax format from the five suppliers ends up as the same value |
+| `test_business_rules.py` | The three business rules and every rejection reason |
+| `test_pipeline.py` | Steps 01, 02 and 04 end to end on each sample supplier, with the SAP step simulated |
+
+```bash
+pip install pytest
+pytest
+```
+
+The end-to-end tests caught a real bug: step 04 refused a mixed-supplier requisition but still exited as a success, so a scheduler running it would never notice. It now exits with an error code.
+
+<details>
+<summary><b>Running the VBA steps in SAP</b></summary>
+
+Import the `.bas` files into an Excel workbook through the VBA editor (`Alt + F11`, then File > Import File). They need an open SAP session with GUI scripting enabled on both client and server, and should run against a test environment.
+
+The SAP screen paths at the top of each module change between SAP versions. Record them once in your own system with the SAP GUI script recorder and replace the constants.
+
+</details>
+
+<details>
+<summary><b>Repository structure</b></summary>
+
+```
+sap-automation/
+├── 01-supplier-intake/
+│   ├── src/intake.py              # supplier quote -> standard table
+│   └── sample_data/               # five layouts, same required fields
+├── 02-requisition-builder/
+│   └── src/build_requisition.py   # standard table -> requisition file
+├── 03-requisition-sap/
+│   └── src/RequisitionSAP.bas     # requisition file -> SAP ME51N
+├── 04-po-handover/
+│   └── src/po_handover.py         # requisition -> purchase order files
+├── 05-purchase-order-sap/
+│   └── src/PurchaseOrderSAP.bas   # purchase order file -> SAP ME21N
+├── shared/
+│   ├── suppliers.yaml             # supplier layout mapping
+│   ├── parsers.py                 # reads messy values (taxes, decimals, units)
+│   ├── item_master.py             # item master access, used by steps 02 and 04
+│   ├── master_data.xlsx           # item master
+│   ├── Input_RC_automatic.xlsx    # requisition template
+│   └── Input_PO_automatic.xlsx    # purchase order template
+├── tests/                         # pytest suite, runs in GitHub Actions
+├── docs/                          # images used in this README
+└── requirements.txt
+```
+
+</details>
 
 ## Tech stack
 
-Python (openpyxl, PyYAML), VBA, SAP GUI Scripting, Excel.
+Python 3.11 (openpyxl, PyYAML, pytest) · GitHub Actions · VBA · SAP GUI Scripting · Excel
 
-## Roadmap
+## Next steps
 
-- [ ] Replace the file handover between stages with a database table
-- [ ] Unit tests for the parsing and validation layers
-- [ ] Move the requisition and purchase order layouts into configuration as well
+- [x] Automated tests for parsing, business rules and the pipeline
+- [ ] Replace the file handover between steps with a database table
+- [ ] Move the RC and PO layouts into configuration too
 
 ## Author
 
-**Lucas Fernandes Nunes** - Data & BI Analyst
-[LinkedIn](https://linkedin.com/in/lucas-fernandes-nunes-335867256) · [Portfolio](https://lucasdata.notion.site)
+**Lucas Fernandes Nunes** · Data & BI Analyst · moving to Lisbon in February 2027
+[LinkedIn](https://linkedin.com/in/lucas-fernandes-nunes-335867256) · [Portfolio](https://lucasnunesf.notion.site)
