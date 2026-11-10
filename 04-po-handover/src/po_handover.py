@@ -223,7 +223,7 @@ def main():
             print(f"  {code}")
         print()
         print("Run the pipeline once per supplier quotation.")
-        return
+        sys.exit(1)
 
     written = []
     for operation_type, group in sorted(groups.items()):
