@@ -58,8 +58,17 @@ def parse_number(value, decimal_style="dot"):
     return float(number)
 
 
+def is_blank(value):
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
 def parse_rate(value, tax_style, decimal_style="dot", net_amount=None):
-    """Return a tax rate as a decimal fraction: 5% becomes 0.05."""
+    """Return a tax rate as a decimal fraction: 5% becomes 0.05.
+
+    A blank cell returns None (the supplier didn't say). "-", "N/A", 0 or 0%
+    return 0.0 (the supplier said the tax doesn't apply)."""
+    if is_blank(value):
+        return None
     if tax_style == "amount":
         amount = parse_number(value, decimal_style)
         if amount is None or not net_amount:
@@ -82,10 +91,13 @@ def parse_rate(value, tax_style, decimal_style="dot", net_amount=None):
 
 
 def parse_combined_taxes(text, decimal_style="dot"):
-    """Split 'IPI 5%; ICMS 18%; PIS/COFINS 9.25%' into a rate per tax."""
+    """Split 'IPI 5%; ICMS 18%; PIS/COFINS 9.25%' into a rate per tax.
+
+    A blank cell means every tax is missing. Otherwise the cell lists the taxes
+    that apply, and a tax it doesn't mention is 0."""
+    if is_blank(text):
+        return {"ipi": None, "icms": None, "pis_cofins": None, "iss": None}
     rates = {"ipi": 0.0, "icms": 0.0, "pis_cofins": 0.0, "iss": 0.0}
-    if not text:
-        return rates
 
     # Find every "NAME number%" in the cell, whatever separates them (";" or ",").
     for match in re.finditer(r"([A-Za-z][A-Za-z/ ]*?)\s*(\d[\d.,]*)\s*%", str(text)):

@@ -50,8 +50,9 @@ def test_parse_rate_with_comma_decimal():
     assert P.parse_rate("9,25%", "percent_text", "comma") == pytest.approx(0.0925)
 
 
-def test_parse_rate_empty_cell_means_no_tax():
-    assert P.parse_rate(None, "percent_number") == 0.0
+def test_parse_rate_empty_cell_means_missing_tax():
+    # blank is "the supplier didn't say", not zero: see tests/test_validation.py
+    assert P.parse_rate(None, "percent_number") is None
 
 
 def test_parse_rate_amount_without_net_value_does_not_divide_by_zero():
@@ -87,8 +88,8 @@ def test_combined_taxes_reject_an_unknown_tax():
         P.parse_combined_taxes("IPI 5%; VAT 20%")
 
 
-@pytest.mark.parametrize("value", [None, "", "no taxes"])
-def test_combined_taxes_empty_means_all_zero(value):
+@pytest.mark.parametrize("value", ["no taxes"])
+def test_combined_taxes_without_any_tax_means_all_zero(value):
     assert set(P.parse_combined_taxes(value).values()) == {0.0}
 
 

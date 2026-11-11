@@ -133,7 +133,7 @@ def build_row(raw, config, decimal_style, columns, file_values, file_name,
     tax_style = config["tax_style"]
     if tax_style == "combined_text":
         rates = read("taxes", P.parse_combined_taxes, get("taxes"), decimal_style) \
-            or {key: 0.0 for key in ("ipi", "icms", "pis_cofins", "iss")}
+            or {key: None for key in ("ipi", "icms", "pis_cofins", "iss")}
     else:
         rates = {key: read(key, P.parse_rate, get(key), tax_style, decimal_style, net_amount)
                  for key in ("ipi", "icms", "pis_cofins", "iss")}
@@ -181,6 +181,23 @@ def validate(rows):
             problems.append("net amount could not be read")
         elif row["net_amount"] <= 0:
             problems.append("net amount is zero")
+
+        # unit price x quantity has to give the net amount. The unit price is
+        # quoted to the cent, so each unit can be half a cent off, plus one
+        # cent for rounding the total.
+        unit_price, quantity, net = row.get("unit_price"), row["quantity"], row["net_amount"]
+        if None not in (unit_price, quantity, net) and quantity > 0 and net > 0:
+            expected = unit_price * quantity
+            if abs(expected - net) > 0.005 * quantity + 0.01:
+                problems.append(f"net amount {net:,.2f} does not match unit price x quantity "
+                                f"({unit_price:,.2f} x {quantity:g} = {expected:,.2f})")
+
+        # A blank tax cell is not a zero: if the tax enters the SAP value, the
+        # buyer has to confirm it ("-" or 0 when it doesn't apply).
+        used = ("ipi",) if row["operation_type"] == "MATERIAL" else ("ipi", "icms", "pis_cofins", "iss")
+        for tax in used:
+            if row.get(tax, 0.0) is None:
+                problems.append(f"{tax} is missing (blank cell); write 0 or '-' if it does not apply")
 
         if row["part_number"]:
             key = (row["source_file"], row["part_number"].upper())
