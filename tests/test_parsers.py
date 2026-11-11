@@ -27,7 +27,7 @@ def test_parse_number_reads_every_format(value, style, expected):
     assert P.parse_number(value, style) == pytest.approx(expected)
 
 
-@pytest.mark.parametrize("value", [None, "", "  ", "-", "N/A", "n/a", "abc"])
+@pytest.mark.parametrize("value", [None, "", "  ", "-", "N/A", "n/a"])
 def test_parse_number_returns_none_for_empty_cells(value):
     assert P.parse_number(value) is None
 
@@ -80,10 +80,11 @@ def test_combined_taxes_with_comma_decimal_and_iss():
     assert rates["ipi"] == 0.0
 
 
-def test_combined_taxes_ignores_unknown_labels():
-    rates = P.parse_combined_taxes("IPI 5%; VAT 20%")
-    assert rates["ipi"] == pytest.approx(0.05)
-    assert sum(rates.values()) == pytest.approx(0.05)
+def test_combined_taxes_reject_an_unknown_tax():
+    # a tax the system doesn't know would leave the SAP total wrong:
+    # the buyer has to see it before it becomes an order
+    with pytest.raises(ValueError, match="unknown tax 'VAT'"):
+        P.parse_combined_taxes("IPI 5%; VAT 20%")
 
 
 @pytest.mark.parametrize("value", [None, "", "no taxes"])
@@ -100,7 +101,6 @@ def test_combined_taxes_empty_means_all_zero(value):
     ("12 h", 12.0),
     (8, 8.0),
     (None, None),
-    ("pcs", None),
 ])
 def test_quantity_with_unit(value, expected):
     assert P.parse_quantity_with_unit(value) == expected

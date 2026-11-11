@@ -109,21 +109,33 @@ def build_row(raw, config, decimal_style, columns, file_values, file_name,
     else:
         operation_type = P.normalise_operation_type(get("operation_type"))
 
-    if composite.get("quantity_has_unit"):
-        quantity = P.parse_quantity_with_unit(get("quantity"))
-    else:
-        quantity = P.parse_number(get("quantity"), decimal_style)
+    # A value in the wrong format is never guessed: it is kept as a reason
+    # to reject the line, and the field stays empty.
+    parse_errors = []
 
-    unit_price = P.parse_number(get("unit_price"), decimal_style)
-    net_amount = P.parse_number(get("net_amount"), decimal_style)
+    def read(field, parse, *args):
+        try:
+            return parse(*args)
+        except P.NumberFormatError as error:
+            parse_errors.append(f"{field}: {error}")
+            return None
+
+    if composite.get("quantity_has_unit"):
+        quantity = read("quantity", P.parse_quantity_with_unit, get("quantity"), decimal_style)
+    else:
+        quantity = read("quantity", P.parse_number, get("quantity"), decimal_style)
+
+    unit_price = read("unit_price", P.parse_number, get("unit_price"), decimal_style)
+    net_amount = read("net_amount", P.parse_number, get("net_amount"), decimal_style)
     if net_amount is None and unit_price is not None and quantity is not None:
         net_amount = round(unit_price * quantity, 2)
 
     tax_style = config["tax_style"]
     if tax_style == "combined_text":
-        rates = P.parse_combined_taxes(get("taxes"), decimal_style)
+        rates = read("taxes", P.parse_combined_taxes, get("taxes"), decimal_style) \
+            or {key: 0.0 for key in ("ipi", "icms", "pis_cofins", "iss")}
     else:
-        rates = {key: P.parse_rate(get(key), tax_style, decimal_style, net_amount)
+        rates = {key: read(key, P.parse_rate, get(key), tax_style, decimal_style, net_amount)
                  for key in ("ipi", "icms", "pis_cofins", "iss")}
 
     return {
@@ -140,6 +152,7 @@ def build_row(raw, config, decimal_style, columns, file_values, file_name,
         "source_file": file_name,
         "source_sheet": sheet_name,
         "source_row": excel_row,
+        "parse_errors": parse_errors,
     }
 
 
@@ -154,7 +167,7 @@ def validate(rows):
     seen = {}
 
     for row in rows:
-        problems = []
+        problems = list(row.get("parse_errors", []))
 
         if not row["part_number"]:
             problems.append("part number is empty")

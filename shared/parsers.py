@@ -17,10 +17,25 @@ TAX_NAMES = {
 }
 
 
-def parse_number(value, decimal_style="dot"):
-    """Return a float, or None when the cell holds no usable number.
+class NumberFormatError(ValueError):
+    """A cell has a value, but not in the format configured for the supplier."""
 
-    Handles '1.234,56', '1,234.56', 'BRL 1.145,00', ' 48,90 ' and plain floats.
+
+# What a number may look like in each style: optional minus, digits with
+# thousands separators every three digits (or none), optional decimals.
+NUMBER_FORMATS = {
+    "comma": (re.compile(r"-?(\d{1,3}(\.\d{3})+|\d+)(,\d+)?"), "1.234,56"),
+    "dot": (re.compile(r"-?(\d{1,3}(,\d{3})+|\d+)(\.\d+)?"), "1,234.56"),
+}
+CURRENCY_PREFIX = re.compile(r"^(BRL|R\$|USD|US\$|\$|EUR|€)\s*", re.I)
+
+
+def parse_number(value, decimal_style="dot"):
+    """Return a float, or None when the cell is empty.
+
+    Reads '1.234,56' (comma style), '1,234.56' (dot style), 'BRL 1.145,00',
+    ' 48,90 ' and plain numbers. Text that does not match the supplier's
+    configured format raises NumberFormatError instead of being guessed.
     """
     if value is None:
         return None
@@ -31,19 +46,16 @@ def parse_number(value, decimal_style="dot"):
     if text in ("", "-", "N/A", "n/a"):
         return None
 
-    text = re.sub(r"[^\d,.\-]", "", text)
-    if text in ("", "-"):
-        return None
+    number = CURRENCY_PREFIX.sub("", text).strip()
+    pattern, example = NUMBER_FORMATS[decimal_style]
+    if not pattern.fullmatch(number):
+        raise NumberFormatError(f"'{text}' is not in {decimal_style} format ({example})")
 
     if decimal_style == "comma":
-        text = text.replace(".", "").replace(",", ".")
+        number = number.replace(".", "").replace(",", ".")
     else:
-        text = text.replace(",", "")
-
-    try:
-        return float(text)
-    except ValueError:
-        return None
+        number = number.replace(",", "")
+    return float(number)
 
 
 def parse_rate(value, tax_style, decimal_style="dot", net_amount=None):
@@ -54,6 +66,10 @@ def parse_rate(value, tax_style, decimal_style="dot", net_amount=None):
             return 0.0
         return round(amount / net_amount, 6)
 
+    if tax_style not in ("percent_text", "percent_number", "decimal_fraction"):
+        return 0.0
+    if tax_style == "percent_text" and isinstance(value, str):
+        value = value.strip().removesuffix("%")
     number = parse_number(value, decimal_style)
     if number is None:
         return 0.0
@@ -71,28 +87,29 @@ def parse_combined_taxes(text, decimal_style="dot"):
     if not text:
         return rates
 
-    for chunk in str(text).split(";"):
-        match = re.match(r"\s*([A-Za-z/ ]+?)\s*([\d.,]+)\s*%", chunk)
-        if not match:
-            continue
-        label = match.group(1).strip().lower()
-        key = TAX_NAMES.get(label)
+    # Find every "NAME number%" in the cell, whatever separates them (";" or ",").
+    for match in re.finditer(r"([A-Za-z][A-Za-z/ ]*?)\s*(\d[\d.,]*)\s*%", str(text)):
+        label = match.group(1).strip()
+        key = TAX_NAMES.get(label.lower())
         if not key:
-            continue
+            raise NumberFormatError(f"unknown tax '{label}'")
         value = parse_number(match.group(2), decimal_style)
         if value is not None:
             rates[key] = round(value / 100, 6)
     return rates
 
 
-def parse_quantity_with_unit(value):
-    """'36 pcs' becomes 36. A plain number passes through unchanged."""
+def parse_quantity_with_unit(value, decimal_style="dot"):
+    """'36 pcs' becomes 36 and, for a comma supplier, '1,5 kg' becomes 1.5.
+    A plain number passes through unchanged. Anything else is an error."""
     if isinstance(value, (int, float)):
         return float(value)
-    if value is None:
+    if value is None or not str(value).strip():
         return None
-    match = re.search(r"[\d.,]+", str(value))
-    return parse_number(match.group(0), "dot") if match else None
+    match = re.fullmatch(r"\s*(-?\d[\d.,]*)\s*[A-Za-z]*\.?\s*", str(value))
+    if not match:
+        raise NumberFormatError(f"'{value}' is not in quantity format (36 pcs)")
+    return parse_number(match.group(1), decimal_style)
 
 
 def strip_type_prefix(description):
