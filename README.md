@@ -106,7 +106,7 @@ Adding a supplier means copying a block and changing the column names. A `consta
 
 **Mapping in config, not code.** Supplier layouts change all the time. Keeping them in YAML means the person who knows the supplier can update it without touching Python.
 
-**Reject, never guess.** A missing quantity, a zero price, a duplicate line or an unknown item is rejected and reported with its file, sheet and row. Layout differences repeat every month, so they are worth automating. Data errors are one-offs, so they are worth reporting, not fixing silently.
+**Reject, never guess.** A missing quantity, a zero price, a duplicate line, an unknown item, a number that isn't in the supplier's configured format, an unknown tax, a blank tax cell or a net amount that doesn't match unit price × quantity is rejected and reported with its file, sheet and row. Layout differences repeat every month, so they are worth automating. Data errors are one-offs, so they are worth reporting, not fixing silently.
 
 **Business rules live in code.** They don't depend on whoever is doing the job that day:
 
@@ -182,12 +182,14 @@ If you run it on the all-suppliers output, step 04 stops on purpose with an erro
 
 ## Tests
 
-69 automated tests run on every push with GitHub Actions:
+104 automated tests run on every push with GitHub Actions:
 
 | File | What it checks |
 |---|---|
 | `test_parsers.py` | Every number and tax format from the five suppliers ends up as the same value |
 | `test_business_rules.py` | The three business rules and every rejection reason |
+| `test_strict_parsing.py` | A number outside the supplier's format, an ambiguous quantity or an unknown tax rejects the line instead of becoming a wrong value |
+| `test_validation.py` | Net amount against unit price × quantity, and a blank tax cell (missing) against "-" or 0 (doesn't apply) |
 | `test_pipeline.py` | Steps 01, 02 and 04 end to end on each sample supplier, with the SAP step simulated |
 
 ```bash
@@ -196,6 +198,8 @@ pytest
 ```
 
 The end-to-end tests caught a real bug: step 04 refused a mixed-supplier requisition but still exited as a success, so a scheduler running it would never notice. It now exits with an error code.
+
+Making the number parser strict caught a second one in the sample data: supplier 5 is configured with comma decimals but wrote `PIS/COFINS 9.25%`. The old parser read 925%, and the three service lines went to the SAP file at about ten times their value (162,740.00 instead of 18,051.50 for the first one). The sample now says `9,25%`, and a test checks the three values.
 
 <details>
 <summary><b>Running the VBA steps in SAP</b></summary>
