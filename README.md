@@ -246,9 +246,8 @@ Python 3.11 (openpyxl, PyYAML, pytest) · GitHub Actions · VBA · SAP GUI Scrip
 
 ## Next steps
 
-- [x] Automated tests for parsing, business rules and the pipeline
-- [ ] Replace the file handover between steps with a database table
-- [ ] Move the RC and PO layouts into configuration too
+- Replace the file handover between steps with a database table
+- Move the RC and PO layouts into configuration too
 
 ## How this was built
 
