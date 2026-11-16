@@ -244,11 +244,6 @@ sap-automation/
 
 Python 3.11 (openpyxl, PyYAML, pytest) · GitHub Actions · VBA · SAP GUI Scripting · Excel
 
-## Next steps
-
-- Replace the file handover between steps with a database table
-- Move the RC and PO layouts into configuration too
-
 ## How this was built
 
 The problem, the business rules and the design decisions are mine. They come from my work in purchasing at Toyota do Brasil. I used an AI coding assistant to write the code faster and reviewed the result.
