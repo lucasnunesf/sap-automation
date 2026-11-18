@@ -244,9 +244,9 @@ sap-automation/
 
 Python 3.11 (openpyxl, PyYAML, pytest) · GitHub Actions · VBA · SAP GUI Scripting · Excel
 
-## How this was built
+## Background
 
-The problem, the business rules and the design decisions are mine. They come from my work in purchasing at Toyota do Brasil. I used an AI coding assistant to write the code faster and reviewed the result.
+The problem, the business rules and the design decisions are mine. They come from my work in purchasing at Toyota do Brasil.
 
 
 ## Author
